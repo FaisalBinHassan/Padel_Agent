@@ -48,7 +48,7 @@ def notify_status(check_num: int, slots_found: int) -> None:
     if slots_found:
         return  # slot alert already sent — don't double-notify
 
-    title = f"Padel check #{check_num} — {time_str}"
+    title = f"Padel check #{check_num} - {time_str}"
     message = (
         "No slots yet at Hyde Park or Regent's Park\n"
         "Still watching 11:00 and 12:00 on Fri 10 Apr"
