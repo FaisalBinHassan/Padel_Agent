@@ -40,21 +40,23 @@ def notify(slots: "list[AvailableSlot]") -> None:
     _desktop(title, message)
 
 
-def notify_status(check_num: int, slots_found: int) -> None:
-    """Send a brief heartbeat notification after every check."""
+def notify_status(run_num: str, statuses: "list") -> None:
+    """Send a heartbeat notification showing real court status after every check."""
     from datetime import datetime
     time_str = datetime.utcnow().strftime("%H:%M UTC")
 
-    if slots_found:
-        return  # slot alert already sent — don't double-notify
+    title = f"Padel checked - run #{run_num} at {time_str}"
 
-    title = f"Padel check #{check_num} - {time_str}"
-    message = (
-        "No slots yet at Hyde Park or Regent's Park\n"
-        "Still watching 11:00 and 12:00 on Fri 10 Apr"
-    )
+    lines = []
+    for s in statuses:
+        icon = "FREE" if s.status == "OPEN" else ("FULL" if s.status == "FULL" else "ERR")
+        lines.append(f"{s.location} {s.time}: {icon}")
 
-    _ntfy(title, message, [], priority="low", tags="hourglass_flowing_sand")
+    if not lines:
+        lines.append("No slots data returned from API")
+
+    message = "\n".join(lines)
+    _ntfy(title, message, [], priority="default", tags="magnifying_glass_tilted_left")
 
 
 def _build_message(slots: "list[AvailableSlot]") -> str:

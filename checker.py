@@ -50,6 +50,15 @@ HEADERS = {
 
 
 @dataclass
+class SlotStatus:
+    """Status of a single target time slot (available or not)."""
+    location: str
+    time: str
+    status: str   # "OPEN" | "FULL" | "ERROR"
+    spaces: int
+
+
+@dataclass
 class AvailableSlot:
     location: str
     time: str
@@ -59,11 +68,11 @@ class AvailableSlot:
 
     def __str__(self):
         court_info = f" ({self.court})" if self.court else ""
-        return f"{self.location}{court_info} — {self.time} on {TARGET_DATE}"
+        return f"{self.location}{court_info} - {self.time} on {TARGET_DATE}"
 
 
-def check_location(location_name: str, venue_slug: str, booking_url: str) -> list[AvailableSlot]:
-    """Fetch availability for one location and return available target slots."""
+def check_location(location_name: str, venue_slug: str, booking_url: str) -> tuple[list[AvailableSlot], list[SlotStatus]]:
+    """Fetch availability for one location. Returns (available_slots, all_target_statuses)."""
     api_url = f"{API_BASE}/venue/{venue_slug}/activity/padel/v2/times"
     params = {"date": TARGET_DATE}
 
@@ -73,19 +82,19 @@ def check_location(location_name: str, venue_slug: str, booking_url: str) -> lis
         data = resp.json()
     except requests.RequestException as exc:
         logger.error(f"Request failed for {location_name}: {exc}")
-        return []
+        return [], [SlotStatus(location_name, t, "ERROR", 0) for t in TARGET_TIMES]
     except ValueError as exc:
         logger.error(f"JSON parse error for {location_name}: {exc}")
-        return []
+        return [], [SlotStatus(location_name, t, "ERROR", 0) for t in TARGET_TIMES]
 
     slots = data.get("data", [])
     if not isinstance(slots, list):
         logger.warning(f"Unexpected API response shape for {location_name}")
-        return []
-
-    logger.debug(f"{location_name}: {len(slots)} total slots returned")
+        return [], [SlotStatus(location_name, t, "ERROR", 0) for t in TARGET_TIMES]
 
     available = []
+    statuses = []
+
     for slot in slots:
         start_time = (slot.get("starts_at") or {}).get("format_24_hour", "")
         if start_time not in TARGET_TIMES:
@@ -93,9 +102,10 @@ def check_location(location_name: str, venue_slug: str, booking_url: str) -> lis
 
         status = (slot.get("action_to_show") or {}).get("status", "")
         spaces = slot.get("spaces", 0)
-        court = slot.get("location")  # e.g. "Padel Court 1" or "Multiple"
+        court = slot.get("location")
 
         is_available = (status == "BOOK") and (spaces > 0)
+        statuses.append(SlotStatus(location_name, start_time, "OPEN" if is_available else "FULL", spaces))
 
         if is_available:
             available.append(AvailableSlot(
@@ -105,27 +115,23 @@ def check_location(location_name: str, venue_slug: str, booking_url: str) -> lis
                 url=booking_url,
                 spaces=spaces,
             ))
-            logger.info(
-                f"AVAILABLE: {location_name} — {start_time}  "
-                f"(status={status}, spaces={spaces}, court={court})"
-            )
+            logger.info(f"AVAILABLE: {location_name} - {start_time} (spaces={spaces})")
         else:
-            logger.debug(
-                f"Not available: {location_name} — {start_time}  "
-                f"(status={status}, spaces={spaces})"
-            )
+            logger.debug(f"Not available: {location_name} - {start_time} (status={status})")
 
-    return available
+    return available, statuses
 
 
-def check_all_courts(**_kwargs) -> list[AvailableSlot]:
-    """Check all configured locations and return available slots."""
+def check_all_courts(**_kwargs) -> tuple[list[AvailableSlot], list[SlotStatus]]:
+    """Check all configured locations. Returns (available_slots, all_statuses)."""
     all_available: list[AvailableSlot] = []
+    all_statuses: list[SlotStatus] = []
     for location_name, info in LOCATIONS.items():
-        slots = check_location(
+        slots, statuses = check_location(
             location_name=location_name,
             venue_slug=info["venue_slug"],
             booking_url=info["url"],
         )
         all_available.extend(slots)
-    return all_available
+        all_statuses.extend(statuses)
+    return all_available, all_statuses

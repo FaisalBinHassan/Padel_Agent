@@ -51,12 +51,16 @@ def run(interval_seconds: int, once: bool, keep_going: bool) -> None:
         logger.info(f"[Check #{check_count} at {now}] Scanning courts...")
 
         try:
-            available = check_all_courts()
+            available, statuses = check_all_courts()
         except Exception as exc:
             logger.error(f"Check failed: {exc}")
-            available = []
+            available, statuses = [], []
 
-        # Only notify about slots we haven't already alerted on
+        # Always send a status notification so you can confirm it's running
+        run_num = os.getenv("GITHUB_RUN_NUMBER", str(check_count))
+        notify_status(run_num, statuses)
+
+        # Only alert about newly opened slots
         new_slots = [s for s in available if str(s) not in already_notified]
 
         if new_slots:
@@ -70,7 +74,6 @@ def run(interval_seconds: int, once: bool, keep_going: bool) -> None:
                 break
         else:
             logger.info("No available slots found.")
-            notify_status(check_count, slots_found=len(available))
 
         if once:
             break
