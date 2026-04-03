@@ -33,11 +33,28 @@ def notify(slots: "list[AvailableSlot]") -> None:
         return
 
     message = _build_message(slots)
-    title = f"🎾 Padel available! ({len(slots)} slot{'s' if len(slots) > 1 else ''})"
+    title = f"PADEL SLOT OPEN! ({len(slots)} slot{'s' if len(slots) > 1 else ''})"
 
     _console(title, message, slots)
-    _ntfy(title, message, slots)
+    _ntfy(title, message, slots, priority="urgent", tags="tennis,rotating_light")
     _desktop(title, message)
+
+
+def notify_status(check_num: int, slots_found: int) -> None:
+    """Send a brief heartbeat notification after every check."""
+    from datetime import datetime
+    time_str = datetime.utcnow().strftime("%H:%M UTC")
+
+    if slots_found:
+        return  # slot alert already sent — don't double-notify
+
+    title = f"Padel check #{check_num} — {time_str}"
+    message = (
+        "No slots yet at Hyde Park or Regent's Park\n"
+        "Still watching 11:00 and 12:00 on Fri 10 Apr"
+    )
+
+    _ntfy(title, message, [], priority="low", tags="hourglass_flowing_sand")
 
 
 def _build_message(slots: "list[AvailableSlot]") -> str:
@@ -60,25 +77,24 @@ def _console(title: str, message: str, slots: "list[AvailableSlot]") -> None:
     print(separator + "\n")
 
 
-def _ntfy(title: str, message: str, slots: "list[AvailableSlot]") -> None:
+def _ntfy(title: str, message: str, slots: "list[AvailableSlot]",
+          priority: str = "default", tags: str = "tennis") -> None:
     if not NTFY_TOPIC:
         return
 
     url = f"{NTFY_SERVER}/{NTFY_TOPIC}"
+    headers = {
+        "Title": title,
+        "Priority": priority,
+        "Tags": tags,
+    }
+    if slots:
+        headers["Click"] = slots[0].url
+
     try:
-        resp = requests.post(
-            url,
-            data=message.encode("utf-8"),
-            headers={
-                "Title": title,
-                "Priority": "high",
-                "Tags": "tennis,calendar",
-                "Click": slots[0].url,
-            },
-            timeout=10,
-        )
+        resp = requests.post(url, data=message.encode("utf-8"), headers=headers, timeout=10)
         if resp.ok:
-            logger.info(f"ntfy notification sent to {url}")
+            logger.info(f"ntfy notification sent ({priority})")
         else:
             logger.warning(f"ntfy returned {resp.status_code}: {resp.text}")
     except Exception as exc:

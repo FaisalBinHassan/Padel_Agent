@@ -22,7 +22,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from checker import check_all_courts, TARGET_DATE, TARGET_TIMES
-from notifier import notify
+from notifier import notify, notify_status
 
 load_dotenv()
 
@@ -70,6 +70,7 @@ def run(interval_seconds: int, once: bool, keep_going: bool) -> None:
                 break
         else:
             logger.info("No available slots found.")
+            notify_status(check_count, slots_found=len(available))
 
         if once:
             break
